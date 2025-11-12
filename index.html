@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aplikasi Keuangan Glow</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+    body {
+        font-family: 'Poppins', sans-serif;
+        background: radial-gradient(circle at top, #0a0a0a, #111);
+        color: #fff;
+        text-align: center;
+        padding: 25px;
+        min-height: 100vh;
+        overflow-x: hidden;
+    }
+    h1 {
+        font-size: 2.5em;
+        color: #00ffe5;
+        text-shadow: 0 0 25px #00ffe5, 0 0 50px #00e5ff;
+        margin-bottom: 15px;
+        letter-spacing: 1px;
+    }
+    .container {
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 20px;
+        box-shadow: 0 0 25px #00ffe5;
+        max-width: 520px;
+        margin: 0 auto;
+        padding: 25px;
+        backdrop-filter: blur(10px);
+        animation: fadeIn 1s ease;
+    }
+    input, select, button {
+        width: 90%;
+        margin: 10px 0;
+        padding: 10px;
+        border-radius: 10px;
+        border: none;
+        font-size: 1em;
+    }
+    input, select {
+        background: rgba(255, 255, 255, 0.12);
+        color: #fff;
+        outline: none;
+    }
+    button {
+        background: linear-gradient(90deg, #00ffe5, #0080ff);
+        color: #000;
+        font-weight: bold;
+        cursor: pointer;
+        transition: 0.3s;
+    }
+    button:hover {
+        box-shadow: 0 0 20px #00e5ff, 0 0 40px #00ffe5;
+        transform: scale(1.05);
+    }
+    .saldo {
+        font-size: 1.5em;
+        margin-top: 15px;
+        color: #00ffe5;
+        text-shadow: 0 0 15px #00ffe5;
+    }
+    ul {
+        list-style: none;
+        padding: 0;
+        margin-top: 15px;
+    }
+    li {
+        background: rgba(255, 255, 255, 0.08);
+        margin: 8px 0;
+        padding: 10px;
+        border-radius: 10px;
+        display: flex;
+        justify-content: space-between;
+        font-size: 1em;
+        animation: fadeIn 0.5s ease;
+    }
+    li.income { color: #00ff88; text-shadow: 0 0 10px #00ff88; }
+    li.expense { color: #ff3c3c; text-shadow: 0 0 10px #ff3c3c; }
+    canvas {
+        margin-top: 20px;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 15px;
+        padding: 10px;
+        box-shadow: 0 0 20px #00ffe5;
+    }
+    footer {
+        margin-top: 30px;
+        font-size: 0.9em;
+        color: #888;
+    }
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(-10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+</style>
+</head>
+<body>
+    <h1>💫 Aplikasi Keuangan Glow</h1>
+
+    <!-- Halaman Login -->
+    <div class="container" id="loginContainer">
+        <h2>Masuk</h2>
+        <input type="text" id="username" placeholder="Masukkan nama kamu">
+        <button onclick="login()">Masuk</button>
+    </div>
+
+    <!-- Halaman Keuangan -->
+    <div class="container" id="appContainer" style="display:none;">
+        <h2 id="userTitle"></h2>
+        <input type="text" id="deskripsi" placeholder="Deskripsi (contoh: Gaji, Makan)">
+        <input type="number" id="jumlah" placeholder="Jumlah (Rp)">
+        <select id="tipe">
+            <option value="income">Pemasukan</option>
+            <option value="expense">Pengeluaran</option>
+        </select>
+        <button onclick="tambahTransaksi()">Tambah</button>
+        <button style="background: #ff3c3c; color:white;" onclick="logout()">Keluar</button>
+
+        <div class="saldo">Saldo: Rp <span id="saldo">0</span></div>
+
+        <canvas id="chartPie" width="400" height="200"></canvas>
+        <canvas id="chartBar" width="400" height="200"></canvas>
+
+        <ul id="daftar"></ul>
+    </div>
+
+    <footer>✨ Dibuat dengan semangat & cahaya ✨</footer>
+
+<script>
+    let transaksi = [];
+    let chartPie, chartBar;
+    let user = localStorage.getItem('user') || null;
+
+    // Login user
+    function login() {
+        const inputUser = document.getElementById('username').value.trim();
+        if (!inputUser) return alert('Masukkan nama kamu!');
+        user = inputUser;
+        localStorage.setItem('user', user);
+        if (!localStorage.getItem('transaksi_' + user)) {
+            localStorage.setItem('transaksi_' + user, '[]');
+        }
+        tampilkanApp();
+    }
+
+    // Logout user
+    function logout() {
+        localStorage.removeItem('user');
+        location.reload();
+    }
+
+    // Tampilkan halaman utama
+    function tampilkanApp() {
+        document.getElementById('loginContainer').style.display = 'none';
+        document.getElementById('appContainer').style.display = 'block';
+        document.getElementById('userTitle').textContent = `👤 Halo, ${user}`;
+        transaksi = JSON.parse(localStorage.getItem('transaksi_' + user)) || [];
+        render();
+    }
+
+    function formatRupiah(angka) {
+        return angka.toLocaleString('id-ID');
+    }
+
+    function render() {
+        const daftar = document.getElementById('daftar');
+        const saldoEl = document.getElementById('saldo');
+        daftar.innerHTML = '';
+
+        let saldo = 0, totalIncome = 0, totalExpense = 0;
+        const monthly = {};
+
+        transaksi.forEach((t, i) => {
+            const li = document.createElement('li');
+            li.classList.add(t.tipe);
+            li.innerHTML = `${t.deskripsi} <strong>Rp ${formatRupiah(t.jumlah)}</strong>
+                <button style="background:none;color:#ccc;border:none;cursor:pointer;" onclick="hapus(${i})">❌</button>`;
+            daftar.appendChild(li);
+
+            if (t.tipe === 'income') totalIncome += t.jumlah;
+            else totalExpense += t.jumlah;
+
+            saldo += (t.tipe === 'income' ? t.jumlah : -t.jumlah);
+
+            const month = new Date(t.tanggal).toLocaleString('id-ID', { month: 'short' });
+            if (!monthly[month]) monthly[month] = 0;
+            monthly[month] += (t.tipe === 'income' ? t.jumlah : -t.jumlah);
+        });
+
+        saldoEl.textContent = formatRupiah(saldo);
+        localStorage.setItem('transaksi_' + user, JSON.stringify(transaksi));
+
+        updateChartPie(totalIncome, totalExpense);
+        updateChartBar(monthly);
+    }
+
+    function tambahTransaksi() {
+        const deskripsi = document.getElementById('deskripsi').value.trim();
+        const jumlah = parseInt(document.getElementById('jumlah').value);
+        const tipe = document.getElementById('tipe').value;
+        const tanggal = new Date().toISOString();
+
+        if (!deskripsi || isNaN(jumlah) || jumlah <= 0) {
+            alert('Isi semua data dengan benar!');
+            return;
+        }
+
+        transaksi.push({ deskripsi, jumlah, tipe, tanggal });
+        document.getElementById('deskripsi').value = '';
+        document.getElementById('jumlah').value = '';
+        render();
+    }
+
+    function hapus(i) {
+        transaksi.splice(i, 1);
+        render();
+    }
+
+    function updateChartPie(income, expense) {
+        const ctx = document.getElementById('chartPie').getContext('2d');
+        if (chartPie) chartPie.destroy();
+        chartPie = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Pemasukan', 'Pengeluaran'],
+                datasets: [{
+                    data: [income, expense],
+                    backgroundColor: ['#00ffcc', '#ff4d4d'],
+                    borderColor: ['#00ffe5', '#ff6666'],
+                    borderWidth: 2,
+                    hoverOffset: 12,
+                }]
+            },
+            options: {
+                plugins: { legend: { labels: { color: '#fff' } } }
+            }
+        });
+    }
+
+    function updateChartBar(monthly) {
+        const ctx = document.getElementById('chartBar').getContext('2d');
+        if (chartBar) chartBar.destroy();
+        const labels = Object.keys(monthly);
+        const data = Object.values(monthly);
+
+        chartBar = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Saldo Bulanan',
+                    data,
+                    backgroundColor: '#00ffe5aa',
+                    borderColor: '#00ffe5',
+                    borderWidth: 2,
+                }]
+            },
+            options: {
+                scales: {
+                    x: { ticks: { color: '#fff' } },
+                    y: { ticks: { color: '#fff' } }
+                },
+                plugins: {
+                    legend: { labels: { color: '#fff' } }
+                }
+            }
+        });
+    }
+
+    // Auto login jika sudah tersimpan
+    if (user) tampilkanApp();
+</script>
+</body>
+</html>
